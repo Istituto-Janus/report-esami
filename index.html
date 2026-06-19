@@ -1,0 +1,667 @@
+<html lang="it"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report Esami — Istituto Janus</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f8f7f4; --surface: #ffffff; --surface2: #f1f0ec;
+    --text: #1a1a18; --text2: #5f5e5a; --text3: #9a9993;
+    --border: rgba(0,0,0,0.08); --border2: rgba(0,0,0,0.14);
+    --blu: #185FA5; --blu-light: #E6F1FB; --blu-text: #0C447C;
+    --verde: #3B6D11; --verde-light: #EAF3DE; --verde-text: #27500A;
+    --rosso: #A32D2D; --rosso-light: #FCEBEB; --rosso-text: #791F1F;
+    --arancio: #BA7517;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+
+  /* TOP BAR */
+  .top-bar { background: var(--surface); border-bottom: 0.5px solid var(--border2); padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 60px; position: sticky; top: 0; z-index: 10; }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; color: var(--text); }
+  .logo-dot { width: 28px; height: 28px; background: var(--blu); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .logo-dot svg { width: 16px; height: 16px; fill: white; }
+  .top-right { display: flex; align-items: center; gap: 12px; }
+  .last-update { font-size: 12px; color: var(--text3); }
+  .update-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ccc; margin-right: 5px; vertical-align: middle; }
+  .update-dot.live { background: var(--verde); }
+
+  /* IMPORT BUTTON */
+  .btn-import { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--surface); color: var(--text2); font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .btn-import:hover { background: var(--surface2); color: var(--text); }
+  .btn-import svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  /* IMPORT PANEL */
+  .import-panel { display: none; background: var(--surface); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; }
+  .import-panel.open { display: block; }
+  .import-panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .import-panel p { font-size: 13px; color: var(--text2); margin-bottom: 14px; }
+  .import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .drop-zone { border: 1.5px dashed var(--border2); border-radius: var(--radius); padding: 1.5rem 1rem; text-align: center; cursor: pointer; transition: all 0.15s; position: relative; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--blu); background: var(--blu-light); }
+  .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-zone-label { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 3px; }
+  .drop-zone-sub { font-size: 11px; color: var(--text3); }
+  .drop-zone.loaded { border-color: var(--verde); background: var(--verde-light); }
+  .drop-zone.loaded .drop-zone-label { color: var(--verde-text); }
+  .drop-zone svg { width: 24px; height: 24px; margin-bottom: 8px; }
+  .drop-zone.loaded svg { color: var(--verde); }
+
+  /* TOAST */
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: white; padding: 10px 18px; border-radius: var(--radius); font-size: 13px; z-index: 100; opacity: 0; transform: translateY(8px); transition: all 0.2s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { background: var(--rosso); }
+
+  /* CONTAINER */
+  .container { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* TABS */
+  .tabs { display: flex; gap: 6px; margin-bottom: 2rem; background: var(--surface); border: 0.5px solid var(--border2); border-radius: var(--radius); padding: 5px; width: fit-content; }
+  .tab { padding: 7px 20px; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--text2); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .tab:hover { background: var(--surface2); color: var(--text); }
+  .tab.active { background: var(--blu); color: white; }
+
+  /* STATUS BADGES nei tab */
+  .tab-badge { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--verde); margin-left: 5px; vertical-align: middle; }
+  .tab-badge.missing { background: #ccc; }
+
+  /* EYEBROW */
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+
+  /* KPI */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.75rem; }
+  .kpi { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1rem 1.1rem; }
+  .kpi-label { font-size: 12px; color: var(--text2); margin-bottom: 5px; }
+  .kpi-value { font-size: 24px; font-weight: 600; color: var(--text); letter-spacing: -0.02em; line-height: 1.1; }
+  .kpi-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+  .kpi-sub.pos { color: var(--verde); }
+  .kpi-sub.neg { color: var(--rosso); }
+
+  /* CARDS */
+  .card { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+  .card h3 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.25rem; }
+  .one-col { margin-bottom: 1.25rem; }
+
+  /* LEGEND */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* BADGE */
+  .badge { font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 4px; display: inline-block; }
+  .badge-mat { background: var(--blu-light); color: var(--blu-text); }
+  .badge-idon { background: var(--verde-light); color: var(--verde-text); }
+
+  /* INDIRIZZO */
+  .ind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 1.25rem; }
+  .ind-row { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; gap: 8px; }
+  .ind-name { font-size: 12px; color: var(--text); flex: 1; }
+  .ind-vals { display: flex; gap: 5px; flex-shrink: 0; }
+
+  /* COMPARE TABLE */
+  .cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .cmp-table th { text-align: left; color: var(--text2); font-weight: 500; padding: 7px 10px; border-bottom: 0.5px solid var(--border2); font-size: 12px; }
+  .cmp-table td { padding: 7px 10px; color: var(--text); border-bottom: 0.5px solid var(--border); }
+  .cmp-table tr:last-child td { border-bottom: none; }
+  .cmp-table tr:hover td { background: var(--surface2); }
+  .delta-pos { color: var(--verde); font-size: 12px; font-weight: 500; }
+  .delta-neg { color: var(--rosso); font-size: 12px; font-weight: 500; }
+  .delta-neu { color: var(--text3); font-size: 12px; }
+
+  /* EMPTY STATE */
+  .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text3); }
+  .empty-state svg { width: 40px; height: 40px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-state p { font-size: 14px; }
+
+  /* YEAR VIEW */
+  .year-view { display: none; }
+  .year-view.active { display: block; }
+
+  /* RESPONSIVE */
+  @media (max-width: 640px) {
+    .two-col, .ind-grid, .import-grid { grid-template-columns: 1fr; }
+    .container { padding: 1rem 1rem 3rem; }
+    .top-bar { padding: 0 1rem; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .top-right { gap: 8px; }
+    .last-update { display: none; }
+  }
+</style>
+<script src="chrome-extension://liecbddmkiiihnedobmlmillhodjkdmb/js/recordConsoleEvents.js"></script>
+<script id="embedded-data">
+(function(){
+  var _d1 = {"mat_tot":157,"mat_amm":49,"mat_nonamm":86,"mat_rit":0,"mat_spa":22,"idon_tot":287,"idon_pro":287,"idon_nopro":0,"indirizzi":[{"label":"AFM-RIM","mat":1,"idon":3},{"label":"AFM-SIA","mat":0,"idon":1},{"label":"AFM","mat":25,"idon":51},{"label":"Socio sanitario","mat":20,"idon":48},{"label":"ITI","mat":25,"idon":26},{"label":"Liceo linguistico","mat":15,"idon":28},{"label":"Liceo sc. applicate","mat":10,"idon":10},{"label":"Liceo sportivo","mat":15,"idon":21},{"label":"Liceo sc. umane","mat":13,"idon":29},{"label":"Liceo ec. sociale","mat":27,"idon":51},{"label":"Liceo classico","mat":0,"idon":2},{"label":"Liceo scientifico","mat":3,"idon":13},{"label":"Turistico","mat":3,"idon":4}]};
+  var _d2 = {"mat_tot":263,"mat_amm":85,"mat_nonamm":81,"mat_rit":35,"mat_spa":62,"idon_tot":262,"idon_pro":0,"idon_nopro":0,"indirizzi":[{"label":"AFM-RIM","mat":6,"idon":5},{"label":"AFM-SIA","mat":0,"idon":4},{"label":"AFM","mat":45,"idon":42},{"label":"Socio sanitario","mat":44,"idon":34},{"label":"ITI","mat":26,"idon":23},{"label":"Liceo linguistico","mat":19,"idon":28},{"label":"Liceo sc. applicate","mat":15,"idon":10},{"label":"Liceo sportivo","mat":13,"idon":22},{"label":"Liceo sc. umane","mat":32,"idon":31},{"label":"Liceo ec. sociale","mat":41,"idon":32},{"label":"Liceo classico","mat":4,"idon":4},{"label":"Liceo scientifico","mat":8,"idon":9},{"label":"Turistico","mat":10,"idon":18}]};
+  var _ts = '19/06/2026, 18:08';
+  window.__EMBEDDED__ = { d1: _d1, d2: _d2, ts: _ts };
+})();
+</script></head>
+<body data-new-gr-c-s-check-loaded="14.1304.0" data-gr-ext-installed="">
+
+<div class="top-bar">
+  <div class="logo">
+    <div class="logo-dot">
+      <svg viewBox="0 0 16 16"><path d="M8 2L2 6v8h4v-4h4v4h4V6L8 2z"></path></svg>
+    </div>
+    Istituto Janus · Report Esami
+  </div>
+  <div class="top-right">
+    <div class="last-update">
+      <span class="update-dot live" id="update-dot"></span>
+      <span id="update-time">Aggiornato: 19/06/2026, 18:08</span>
+    </div>
+    <button class="btn-import" onclick="toggleImport()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+      Aggiorna dati
+    </button>
+    <button class="btn-import" id="btn-export" onclick="exportHTML()" style="display: flex;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Esporta index.html
+    </button>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- IMPORT PANEL -->
+  <div class="import-panel" id="import-panel">
+    <h3>Importa file Excel</h3>
+    <p>Trascina o seleziona i file. La dashboard riconosce automaticamente l'anno dal nome del foglio interno (2425 o 2526).</p>
+    <div class="import-grid">
+      <div class="drop-zone" id="dz-a" ondragover="dragOver(event,'dz-a')" ondragleave="dragLeave('dz-a')" ondrop="dropFile(event,'dz-a')">
+        <input type="file" accept=".xlsx,.xls" onchange="loadFile(this,'dz-a')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text3)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <div class="drop-zone-label" id="dz-a-label">Primo file Excel</div>
+        <div class="drop-zone-sub">Trascina qui o clicca per selezionare</div>
+      </div>
+      <div class="drop-zone" id="dz-b" ondragover="dragOver(event,'dz-b')" ondragleave="dragLeave('dz-b')" ondrop="dropFile(event,'dz-b')">
+        <input type="file" accept=".xlsx,.xls" onchange="loadFile(this,'dz-b')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text3)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+        <div class="drop-zone-label" id="dz-b-label">Secondo file Excel</div>
+        <div class="drop-zone-sub">Trascina qui o clicca per selezionare</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" onclick="setTab('2425',this)">2024/25 <span class="tab-badge" id="badge-2425"></span></button>
+    <button class="tab" onclick="setTab('2526',this)">2025/26 <span class="tab-badge" id="badge-2526"></span></button>
+    <button class="tab" onclick="setTab('compare',this)">Confronto</button>
+  </div>
+
+  <!-- ANNO 2424/25 -->
+  <div id="view-2425" class="year-view active">
+    <div id="content-2425">
+    <div class="eyebrow">Anno accademico 2024/25</div>
+    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Totale studenti</div><div class="kpi-value">444</div><div class="kpi-sub ">Maturità + idoneità</div></div><div class="kpi"><div class="kpi-label">Maturità</div><div class="kpi-value">157</div><div class="kpi-sub ">35.4% del totale</div></div><div class="kpi"><div class="kpi-label">Idoneità</div><div class="kpi-value">287</div><div class="kpi-sub ">64.6% del totale</div></div><div class="kpi"><div class="kpi-label">Promossi mat.</div><div class="kpi-value">49</div><div class="kpi-sub ">31.2% maturità</div></div><div class="kpi"><div class="kpi-label">Non ammessi</div><div class="kpi-value">86</div><div class="kpi-sub ">54.8% maturità</div></div><div class="kpi"><div class="kpi-label">Spariti</div><div class="kpi-value">22</div><div class="kpi-sub ">14.0% maturità</div></div></div>
+    <div class="two-col">
+      <div class="card">
+        <h3>Esiti maturità</h3>
+        <div class="legend"><span class="leg-item"><span class="leg-dot" style="background:#378ADD"></span>Promossi 31.2%</span><span class="leg-item"><span class="leg-dot" style="background:#E24B4A"></span>Non ammessi 54.8%</span><span class="leg-item"><span class="leg-dot" style="background:#888780"></span>Spariti 14.0%</span></div>
+        <div style="position:relative;height:200px;"><canvas id="pie-mat-2425" role="img" aria-label="Esiti maturità 2024/25" width="958" height="400" style="display: block; box-sizing: border-box; height: 200px; width: 479px;"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Esiti idoneità</h3>
+        <div class="legend"><span class="leg-item"><span class="leg-dot" style="background:#639922"></span>Promossi 100.0%</span><span class="leg-item"><span class="leg-dot" style="background:#E24B4A"></span>Non promossi 0.3%</span></div>
+        <div style="position:relative;height:200px;"><canvas id="pie-idon-2425" role="img" aria-label="Esiti idoneità 2024/25" width="958" height="400" style="display: block; box-sizing: border-box; height: 200px; width: 479px;"></canvas></div>
+      </div>
+    </div>
+    <div class="eyebrow">Studenti per indirizzo</div>
+    <div class="ind-grid"><div class="ind-row"><span class="ind-name">AFM-RIM</span><div class="ind-vals"><span class="badge badge-mat">Mat 1</span><span class="badge badge-idon">Idon 3</span></div></div><div class="ind-row"><span class="ind-name">AFM-SIA</span><div class="ind-vals"><span class="badge badge-mat">Mat 0</span><span class="badge badge-idon">Idon 1</span></div></div><div class="ind-row"><span class="ind-name">AFM</span><div class="ind-vals"><span class="badge badge-mat">Mat 25</span><span class="badge badge-idon">Idon 51</span></div></div><div class="ind-row"><span class="ind-name">Socio sanitario</span><div class="ind-vals"><span class="badge badge-mat">Mat 20</span><span class="badge badge-idon">Idon 48</span></div></div><div class="ind-row"><span class="ind-name">ITI</span><div class="ind-vals"><span class="badge badge-mat">Mat 25</span><span class="badge badge-idon">Idon 26</span></div></div><div class="ind-row"><span class="ind-name">Liceo linguistico</span><div class="ind-vals"><span class="badge badge-mat">Mat 15</span><span class="badge badge-idon">Idon 28</span></div></div><div class="ind-row"><span class="ind-name">Liceo sc. applicate</span><div class="ind-vals"><span class="badge badge-mat">Mat 10</span><span class="badge badge-idon">Idon 10</span></div></div><div class="ind-row"><span class="ind-name">Liceo sportivo</span><div class="ind-vals"><span class="badge badge-mat">Mat 15</span><span class="badge badge-idon">Idon 21</span></div></div><div class="ind-row"><span class="ind-name">Liceo sc. umane</span><div class="ind-vals"><span class="badge badge-mat">Mat 13</span><span class="badge badge-idon">Idon 29</span></div></div><div class="ind-row"><span class="ind-name">Liceo ec. sociale</span><div class="ind-vals"><span class="badge badge-mat">Mat 27</span><span class="badge badge-idon">Idon 51</span></div></div><div class="ind-row"><span class="ind-name">Liceo classico</span><div class="ind-vals"><span class="badge badge-mat">Mat 0</span><span class="badge badge-idon">Idon 2</span></div></div><div class="ind-row"><span class="ind-name">Liceo scientifico</span><div class="ind-vals"><span class="badge badge-mat">Mat 3</span><span class="badge badge-idon">Idon 13</span></div></div><div class="ind-row"><span class="ind-name">Turistico</span><div class="ind-vals"><span class="badge badge-mat">Mat 3</span><span class="badge badge-idon">Idon 4</span></div></div></div>
+    <div class="one-col card">
+      <h3>Totale per indirizzo (maturità + idoneità)</h3>
+      <div style="position:relative;height:300px;"><canvas id="bar-2425" role="img" aria-label="Distribuzione per indirizzo 2024/25" width="2022" height="600" style="display: block; box-sizing: border-box; height: 300px; width: 1011px;"></canvas></div>
+    </div></div>
+  </div>
+
+  <!-- ANNO 2025/26 -->
+  <div id="view-2526" class="year-view">
+    <div id="content-2526">
+    <div class="eyebrow">Anno accademico 2025/26</div>
+    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Totale studenti</div><div class="kpi-value">525</div><div class="kpi-sub ">Maturità + idoneità</div></div><div class="kpi"><div class="kpi-label">Maturità</div><div class="kpi-value">263</div><div class="kpi-sub ">50.1% del totale</div></div><div class="kpi"><div class="kpi-label">Idoneità</div><div class="kpi-value">262</div><div class="kpi-sub ">49.9% del totale</div></div><div class="kpi"><div class="kpi-label">Promossi mat.</div><div class="kpi-value">85</div><div class="kpi-sub ">32.3% maturità</div></div><div class="kpi"><div class="kpi-label">Non ammessi</div><div class="kpi-value">81</div><div class="kpi-sub ">30.8% maturità</div></div><div class="kpi"><div class="kpi-label">Ritirati</div><div class="kpi-value">35</div><div class="kpi-sub ">13.3% maturità</div></div><div class="kpi"><div class="kpi-label">Spariti</div><div class="kpi-value">62</div><div class="kpi-sub ">23.6% maturità</div></div></div>
+    <div class="two-col">
+      <div class="card">
+        <h3>Esiti maturità</h3>
+        <div class="legend"><span class="leg-item"><span class="leg-dot" style="background:#378ADD"></span>Promossi 32.3%</span><span class="leg-item"><span class="leg-dot" style="background:#E24B4A"></span>Non ammessi 30.8%</span><span class="leg-item"><span class="leg-dot" style="background:#EF9F27"></span>Ritirati 13.3%</span><span class="leg-item"><span class="leg-dot" style="background:#888780"></span>Spariti 23.6%</span></div>
+        <div style="position:relative;height:200px;"><canvas id="pie-mat-2526" role="img" aria-label="Esiti maturità 2025/26" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Esiti idoneità</h3>
+        <div class="legend"><span class="leg-item"><span class="leg-dot" style="background:#B4B2A9"></span>Dato non ancora disponibile</span></div>
+        <div style="position:relative;height:200px;"><canvas id="pie-idon-2526" role="img" aria-label="Esiti idoneità 2025/26" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div>
+      </div>
+    </div>
+    <div class="eyebrow">Studenti per indirizzo</div>
+    <div class="ind-grid"><div class="ind-row"><span class="ind-name">AFM-RIM</span><div class="ind-vals"><span class="badge badge-mat">Mat 6</span><span class="badge badge-idon">Idon 5</span></div></div><div class="ind-row"><span class="ind-name">AFM-SIA</span><div class="ind-vals"><span class="badge badge-mat">Mat 0</span><span class="badge badge-idon">Idon 4</span></div></div><div class="ind-row"><span class="ind-name">AFM</span><div class="ind-vals"><span class="badge badge-mat">Mat 45</span><span class="badge badge-idon">Idon 42</span></div></div><div class="ind-row"><span class="ind-name">Socio sanitario</span><div class="ind-vals"><span class="badge badge-mat">Mat 44</span><span class="badge badge-idon">Idon 34</span></div></div><div class="ind-row"><span class="ind-name">ITI</span><div class="ind-vals"><span class="badge badge-mat">Mat 26</span><span class="badge badge-idon">Idon 23</span></div></div><div class="ind-row"><span class="ind-name">Liceo linguistico</span><div class="ind-vals"><span class="badge badge-mat">Mat 19</span><span class="badge badge-idon">Idon 28</span></div></div><div class="ind-row"><span class="ind-name">Liceo sc. applicate</span><div class="ind-vals"><span class="badge badge-mat">Mat 15</span><span class="badge badge-idon">Idon 10</span></div></div><div class="ind-row"><span class="ind-name">Liceo sportivo</span><div class="ind-vals"><span class="badge badge-mat">Mat 13</span><span class="badge badge-idon">Idon 22</span></div></div><div class="ind-row"><span class="ind-name">Liceo sc. umane</span><div class="ind-vals"><span class="badge badge-mat">Mat 32</span><span class="badge badge-idon">Idon 31</span></div></div><div class="ind-row"><span class="ind-name">Liceo ec. sociale</span><div class="ind-vals"><span class="badge badge-mat">Mat 41</span><span class="badge badge-idon">Idon 32</span></div></div><div class="ind-row"><span class="ind-name">Liceo classico</span><div class="ind-vals"><span class="badge badge-mat">Mat 4</span><span class="badge badge-idon">Idon 4</span></div></div><div class="ind-row"><span class="ind-name">Liceo scientifico</span><div class="ind-vals"><span class="badge badge-mat">Mat 8</span><span class="badge badge-idon">Idon 9</span></div></div><div class="ind-row"><span class="ind-name">Turistico</span><div class="ind-vals"><span class="badge badge-mat">Mat 10</span><span class="badge badge-idon">Idon 18</span></div></div></div>
+    <div class="one-col card">
+      <h3>Totale per indirizzo (maturità + idoneità)</h3>
+      <div style="position:relative;height:300px;"><canvas id="bar-2526" role="img" aria-label="Distribuzione per indirizzo 2025/26" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div>
+    </div></div>
+  </div>
+
+  <!-- CONFRONTO -->
+  <div id="view-compare" class="year-view">
+    <div id="content-compare">
+    <div class="eyebrow">Confronto 2024/25 vs 2025/26</div>
+    <div class="kpi-grid"><div class="kpi"><div class="kpi-label">Totale studenti</div><div class="kpi-value">444 → 525</div><div class="kpi-sub pos">+81</div></div><div class="kpi"><div class="kpi-label">Maturità</div><div class="kpi-value">157 → 263</div><div class="kpi-sub pos">+106</div></div><div class="kpi"><div class="kpi-label">Idoneità</div><div class="kpi-value">287 → 262</div><div class="kpi-sub neg">-25</div></div><div class="kpi"><div class="kpi-label">% promossi mat.</div><div class="kpi-value">31.2% → 32.3%</div><div class="kpi-sub ">Tasso promozione</div></div><div class="kpi"><div class="kpi-label">% non ammessi</div><div class="kpi-value">54.8% → 30.8%</div><div class="kpi-sub ">Tasso non ammessi</div></div></div>
+    <div class="one-col card">
+      <h3>Esiti maturità a confronto</h3>
+      <div style="position:relative;height:260px;"><canvas id="bar-compare" role="img" aria-label="Confronto esiti maturità" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div>
+    </div>
+    <div class="one-col card" style="margin-top:12px;">
+      <h3>Studenti per indirizzo — confronto</h3>
+      <table class="cmp-table">
+        <thead><tr><th>Indirizzo</th><th>24/25 mat</th><th>24/25 idon</th><th>24/25 tot</th><th>25/26 mat</th><th>25/26 idon</th><th>25/26 tot</th><th>Δ</th></tr></thead>
+        <tbody><tr><td>AFM-RIM</td><td>1</td><td>3</td><td><strong>4</strong></td><td>6</td><td>5</td><td><strong>11</strong></td><td class="delta-pos">+7</td></tr><tr><td>AFM-SIA</td><td>0</td><td>1</td><td><strong>1</strong></td><td>0</td><td>4</td><td><strong>4</strong></td><td class="delta-pos">+3</td></tr><tr><td>AFM</td><td>25</td><td>51</td><td><strong>76</strong></td><td>45</td><td>42</td><td><strong>87</strong></td><td class="delta-pos">+11</td></tr><tr><td>Socio sanitario</td><td>20</td><td>48</td><td><strong>68</strong></td><td>44</td><td>34</td><td><strong>78</strong></td><td class="delta-pos">+10</td></tr><tr><td>ITI</td><td>25</td><td>26</td><td><strong>51</strong></td><td>26</td><td>23</td><td><strong>49</strong></td><td class="delta-neg">-2</td></tr><tr><td>Liceo linguistico</td><td>15</td><td>28</td><td><strong>43</strong></td><td>19</td><td>28</td><td><strong>47</strong></td><td class="delta-pos">+4</td></tr><tr><td>Liceo sc. applicate</td><td>10</td><td>10</td><td><strong>20</strong></td><td>15</td><td>10</td><td><strong>25</strong></td><td class="delta-pos">+5</td></tr><tr><td>Liceo sportivo</td><td>15</td><td>21</td><td><strong>36</strong></td><td>13</td><td>22</td><td><strong>35</strong></td><td class="delta-neg">-1</td></tr><tr><td>Liceo sc. umane</td><td>13</td><td>29</td><td><strong>42</strong></td><td>32</td><td>31</td><td><strong>63</strong></td><td class="delta-pos">+21</td></tr><tr><td>Liceo ec. sociale</td><td>27</td><td>51</td><td><strong>78</strong></td><td>41</td><td>32</td><td><strong>73</strong></td><td class="delta-neg">-5</td></tr><tr><td>Liceo classico</td><td>0</td><td>2</td><td><strong>2</strong></td><td>4</td><td>4</td><td><strong>8</strong></td><td class="delta-pos">+6</td></tr><tr><td>Liceo scientifico</td><td>3</td><td>13</td><td><strong>16</strong></td><td>8</td><td>9</td><td><strong>17</strong></td><td class="delta-pos">+1</td></tr><tr><td>Turistico</td><td>3</td><td>4</td><td><strong>7</strong></td><td>10</td><td>18</td><td><strong>28</strong></td><td class="delta-pos">+21</td></tr></tbody>
+      </table>
+    </div></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── STATO ────────────────────────────────────────────────────────────────────
+const state = { '2425': null, '2526': null };
+const C = { blu:'#378ADD', verde:'#639922', rosso:'#E24B4A', arancio:'#EF9F27', grigio:'#888780' };
+const charts = {};
+
+function saveToStorage(anno, data, timestamp) {
+  try {
+    localStorage.setItem('janus-data-' + anno, JSON.stringify(data));
+    localStorage.setItem('janus-ts-' + anno, timestamp);
+  } catch(e) {}
+}
+
+function loadFromStorage() {
+  try {
+    // Priorità: dati embedded nel file > localStorage
+    let d1 = state['2425'] ? JSON.stringify(state['2425']) : localStorage.getItem('janus-data-2425');
+    let d2 = state['2526'] ? JSON.stringify(state['2526']) : localStorage.getItem('janus-data-2526');
+    const ts1 = localStorage.getItem('janus-ts-2425');
+    const ts2 = localStorage.getItem('janus-ts-2526');
+    const embTs = window.__EMBEDDED__ ? window.__EMBEDDED__.ts : null;
+    if (d1) { state['2425'] = typeof d1 === 'string' ? JSON.parse(d1) : d1; renderAnno('2425', state['2425']); markLoaded('2425'); }
+    if (d2) { state['2526'] = typeof d2 === 'string' ? JSON.parse(d2) : d2; renderAnno('2526', state['2526']); markLoaded('2526'); }
+    if (d1 && d2) renderCompare(state['2425'], state['2526']);
+    const lastTs = embTs || ts2 || ts1;
+    if (lastTs) {
+      document.getElementById('update-dot').classList.add('live');
+      document.getElementById('update-time').textContent = 'Aggiornato: ' + lastTs;
+    }
+    if (d1 || d2) document.getElementById('btn-export').style.display = 'flex';
+  } catch(e) { console.error('loadFromStorage error:', e); }
+}
+
+function markLoaded(anno) {
+  document.getElementById('badge-' + anno).classList.remove('missing');
+}
+
+// ─── UI HELPERS ───────────────────────────────────────────────────────────────
+function toggleImport() {
+  document.getElementById('import-panel').classList.toggle('open');
+}
+
+function autoCloseImport() {
+  if (state['2425'] && state['2526']) {
+    setTimeout(() => {
+      document.getElementById('import-panel').classList.remove('open');
+    }, 800);
+  }
+}
+
+function setTab(id, btn) {
+  document.querySelectorAll('.year-view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  btn.classList.add('active');
+}
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+function dragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+function dragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
+function dropFile(e, id) {
+  e.preventDefault();
+  dragLeave(id);
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file, id);
+}
+function loadFile(input, id) {
+  if (input.files[0]) processFile(input.files[0], id);
+}
+
+// ─── LETTURA EXCEL ────────────────────────────────────────────────────────────
+function processFile(file, dzId) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+
+      // Riconosci anno dal nome foglio
+      const sheetName = wb.SheetNames[0];
+      const normalized = sheetName.replace(/[^0-9]/g, '');
+      let anno = null;
+      if (normalized.includes('2425') || sheetName.includes('24') || sheetName.includes('2024')) anno = '2425';
+      else if (normalized.includes('2526') || sheetName.includes('25') || sheetName.includes('2025')) anno = '2526';
+      else {
+        // fallback: prova dal nome file
+        const fn = file.name.toUpperCase();
+        if (fn.includes('2024') || fn.includes('24_25') || fn.includes('2425')) anno = '2425';
+        else if (fn.includes('2025') || fn.includes('25_26') || fn.includes('2526')) anno = '2526';
+      }
+
+      if (!anno) {
+        showToast('Anno non riconosciuto. Il foglio deve chiamarsi 2425 o 2526.', true);
+        return;
+      }
+
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const data = extractData(rows);
+      state[anno] = data;
+
+      // Aggiorna drop zone
+      const label = anno === '2425' ? '2024/25 ✓' : '2025/26 ✓';
+      document.getElementById(dzId + '-label').textContent = label;
+      document.getElementById(dzId).classList.add('loaded');
+      document.getElementById('badge-' + anno).classList.remove('missing');
+
+      // Render
+      renderAnno(anno, data);
+      if (state['2425'] && state['2526']) renderCompare(state['2425'], state['2526']);
+      autoCloseImport();
+      document.getElementById('btn-export').style.display = 'flex';
+
+      // Update timestamp
+      document.getElementById('update-dot').classList.add('live');
+      document.getElementById('update-time').textContent = 'Aggiornato: ' +
+        new Date().toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+
+      saveToStorage(anno, data, new Date().toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }));
+      showToast('File ' + (anno === '2425' ? '2024/25' : '2025/26') + ' importato con successo');
+    } catch(err) {
+      showToast('Errore lettura file: ' + err.message, true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ─── ESTRAZIONE DATI ──────────────────────────────────────────────────────────
+function n(val) {
+  if (val === null || val === undefined || val === '' || val === '?') return 0;
+  const p = parseInt(String(val).replace(/[^0-9]/g, ''), 10);
+  return isNaN(p) ? 0 : p;
+}
+function pct(val, tot) { return tot ? (val / tot * 100).toFixed(1) + '%' : '—'; }
+
+function extractData(rows) {
+  function findRow(kw) {
+    return rows.find(r => r[0] && String(r[0]).toUpperCase().includes(kw.toUpperCase())) || [];
+  }
+
+  const mat_tot    = n(findRow('MATURIT')[1]);
+  const mat_amm    = n(findRow('AMMESSI')[1]);
+  const mat_nonamm = n(findRow('NON AMM')[1]);
+  const mat_rit    = n(findRow('RITIRA')[1]);
+  const mat_spa    = n(findRow('SPARIT')[1]);
+
+  let idon_tot = 0, idon_pro = 0, idon_nopro = 0;
+  // Struttura foglio: colonne 0-1 = maturità, colonne 3-4 = idoneità nella stessa riga
+  // R0: MATURITA' TOTALI | 157 | | IDONEITA' TOTALI | 287
+  // R1: AMMESSI/PROMOSSI | 49  | | PROMOSSI         | 287
+  // R2: NON AMMESSI      | 86  | | NON PROMOSSI     | 0
+  rows.forEach(r => {
+    const k0 = String(r[0]||'').toUpperCase().trim();
+    const k3 = String(r[3]||'').toUpperCase().trim();
+    // IDONEITA' TOTALI è in colonna 3, valore in colonna 4
+    if (k3.includes('IDONE') && k3.includes('TOTAL')) idon_tot = n(r[4]);
+    // PROMOSSI è in colonna 3, valore in colonna 4
+    if (k3 === 'PROMOSSI') idon_pro = n(r[4]);
+    // NON PROMOSSI è in colonna 3, valore in colonna 4
+    if (k3.includes('NON PROM')) idon_nopro = n(r[4]);
+  });
+
+  const KEYS = [
+    { key:'AFM-RIM',  label:'AFM-RIM' },
+    { key:'AFM-SIA',  label:'AFM-SIA' },
+    { key:'AFM',      label:'AFM' },
+    { key:'SOCIO',    label:'Socio sanitario' },
+    { key:'ITI',      label:'ITI' },
+    { key:'LINGUIST', label:'Liceo linguistico' },
+    { key:'APPLIC',   label:'Liceo sc. applicate' },
+    { key:'SPORT',    label:'Liceo sportivo' },
+    { key:'UMANE',    label:'Liceo sc. umane' },
+    { key:'ECONOM',   label:'Liceo ec. sociale' },
+    { key:'CLASSIC',  label:'Liceo classico' },
+    { key:'SCIENT',   label:'Liceo scientifico' },
+    { key:'TURIST',   label:'Turistico' },
+  ];
+
+  const indirizzi = KEYS.map(({ key, label }) => {
+    const r = rows.find(r => {
+      const k = String(r[0]||'').toUpperCase();
+      return k.includes(key) && !k.includes('TOTAL') && !k.includes('AMMES')
+          && !k.includes('NON A') && !k.includes('SPARI') && !k.includes('RITIR') && !k.includes('PROMO');
+    }) || [];
+    return { label, mat: n(r[1]), idon: n(r[4]) };
+  });
+
+  return { mat_tot, mat_amm, mat_nonamm, mat_rit, mat_spa, idon_tot, idon_pro, idon_nopro, indirizzi };
+}
+
+// ─── RENDER HELPERS ───────────────────────────────────────────────────────────
+function renderKPI(items) {
+  return `<div class="kpi-grid">${items.map(({ label, value, sub, cls }) =>
+    `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub ${cls||''}">${sub}</div>` : ''}</div>`
+  ).join('')}</div>`;
+}
+
+function renderLegend(items) {
+  return `<div class="legend">${items.map(({ label, color }) =>
+    `<span class="leg-item"><span class="leg-dot" style="background:${color}"></span>${label}</span>`
+  ).join('')}</div>`;
+}
+
+function renderInd(indirizzi) {
+  return `<div class="ind-grid">${indirizzi.map(i =>
+    `<div class="ind-row"><span class="ind-name">${i.label}</span><div class="ind-vals"><span class="badge badge-mat">Mat ${i.mat}</span><span class="badge badge-idon">Idon ${i.idon}</span></div></div>`
+  ).join('')}</div>`;
+}
+
+function makePie(id, labels, data, colors) {
+  if (charts[id]) charts[id].destroy();
+  setTimeout(() => {
+    charts[id] = new Chart(document.getElementById(id), {
+      type: 'pie',
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+  }, 50);
+}
+
+function makeBar(id, labels, data, color) {
+  if (charts[id]) charts[id].destroy();
+  setTimeout(() => {
+    charts[id] = new Chart(document.getElementById(id), {
+      type: 'bar',
+      data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { font: { size: 11 }, maxRotation: 40, autoSkip: false } }, y: { beginAtZero: true } }
+      }
+    });
+  }, 50);
+}
+
+// ─── RENDER ANNO ──────────────────────────────────────────────────────────────
+function renderAnno(suffix, d) {
+  const tot = d.mat_tot + d.idon_tot;
+
+  const kpiItems = [
+    { label:'Totale studenti', value: tot, sub:'Maturità + idoneità' },
+    { label:'Maturità', value: d.mat_tot, sub: pct(d.mat_tot, tot) + ' del totale' },
+    { label:'Idoneità', value: d.idon_tot, sub: pct(d.idon_tot, tot) + ' del totale' },
+    { label:'Promossi mat.', value: d.mat_amm, sub: pct(d.mat_amm, d.mat_tot) + ' maturità' },
+    { label:'Non ammessi', value: d.mat_nonamm, sub: pct(d.mat_nonamm, d.mat_tot) + ' maturità' },
+  ];
+  if (d.mat_rit) kpiItems.push({ label:'Ritirati', value: d.mat_rit, sub: pct(d.mat_rit, d.mat_tot) + ' maturità' });
+  kpiItems.push({ label:'Spariti', value: d.mat_spa, sub: pct(d.mat_spa, d.mat_tot) + ' maturità' });
+
+  const mL = ['Promossi','Non ammessi','Spariti'];
+  const mD = [d.mat_amm, d.mat_nonamm, d.mat_spa];
+  const mC = [C.blu, C.rosso, C.grigio];
+  if (d.mat_rit) { mL.splice(2,0,'Ritirati'); mD.splice(2,0,d.mat_rit); mC.splice(2,0,C.arancio); }
+
+  const iL = d.idon_pro ? ['Promossi','Non promossi'] : ['Dato non ancora disponibile'];
+  const iD = d.idon_pro ? [d.idon_pro, d.idon_nopro||1] : [1];
+  const iC = d.idon_pro ? [C.verde, C.rosso] : ['#B4B2A9'];
+
+  const anno = suffix === '2425' ? '2024/25' : '2025/26';
+
+  document.getElementById('content-' + suffix).innerHTML = `
+    <div class="eyebrow">Anno accademico ${anno}</div>
+    ${renderKPI(kpiItems)}
+    <div class="two-col">
+      <div class="card">
+        <h3>Esiti maturità</h3>
+        ${renderLegend(mL.map((l,i) => ({ label: l + ' ' + pct(mD[i], d.mat_tot), color: mC[i] })))}
+        <div style="position:relative;height:200px;"><canvas id="pie-mat-${suffix}" role="img" aria-label="Esiti maturità ${anno}"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Esiti idoneità</h3>
+        ${renderLegend(iL.map((l,i) => ({ label: d.idon_pro ? l + ' ' + pct(iD[i], d.idon_tot) : l, color: iC[i] })))}
+        <div style="position:relative;height:200px;"><canvas id="pie-idon-${suffix}" role="img" aria-label="Esiti idoneità ${anno}"></canvas></div>
+      </div>
+    </div>
+    <div class="eyebrow">Studenti per indirizzo</div>
+    ${renderInd(d.indirizzi)}
+    <div class="one-col card">
+      <h3>Totale per indirizzo (maturità + idoneità)</h3>
+      <div style="position:relative;height:300px;"><canvas id="bar-${suffix}" role="img" aria-label="Distribuzione per indirizzo ${anno}"></canvas></div>
+    </div>`;
+
+  makePie('pie-mat-'+suffix, mL, mD, mC);
+  makePie('pie-idon-'+suffix, iL, iD, iC);
+  makeBar('bar-'+suffix,
+    d.indirizzi.map(i => i.label.replace('Liceo ','L. ').replace('Socio sanitario','Soc. san.')),
+    d.indirizzi.map(i => i.mat + i.idon),
+    C.blu
+  );
+}
+
+// ─── RENDER CONFRONTO ────────────────────────────────────────────────────────
+function renderCompare(d1, d2) {
+  const tot1 = d1.mat_tot + d1.idon_tot;
+  const tot2 = d2.mat_tot + d2.idon_tot;
+  const dTot = tot2-tot1, dMat = d2.mat_tot-d1.mat_tot, dIdon = d2.idon_tot-d1.idon_tot;
+
+  const kpiItems = [
+    { label:'Totale studenti', value:`${tot1} → ${tot2}`, sub:(dTot>=0?'+':'')+dTot, cls:dTot>=0?'pos':'neg' },
+    { label:'Maturità', value:`${d1.mat_tot} → ${d2.mat_tot}`, sub:(dMat>=0?'+':'')+dMat, cls:dMat>=0?'pos':'neg' },
+    { label:'Idoneità', value:`${d1.idon_tot} → ${d2.idon_tot}`, sub:(dIdon>=0?'+':'')+dIdon, cls:dIdon>=0?'pos':'neg' },
+    { label:'% promossi mat.', value:`${pct(d1.mat_amm,d1.mat_tot)} → ${pct(d2.mat_amm,d2.mat_tot)}`, sub:'Tasso promozione' },
+    { label:'% non ammessi', value:`${pct(d1.mat_nonamm,d1.mat_tot)} → ${pct(d2.mat_nonamm,d2.mat_tot)}`, sub:'Tasso non ammessi' },
+  ];
+
+  const cL = ['Promossi','Non ammessi','Spariti'];
+  const c1 = [d1.mat_amm, d1.mat_nonamm, d1.mat_spa];
+  const c2 = [d2.mat_amm, d2.mat_nonamm, d2.mat_spa];
+  if (d2.mat_rit) { cL.splice(2,0,'Ritirati'); c1.splice(2,0,0); c2.splice(2,0,d2.mat_rit); }
+
+  let tRows = '';
+  d1.indirizzi.forEach((ind,i) => {
+    const ind2 = d2.indirizzi[i];
+    const t1 = ind.mat+ind.idon, t2 = ind2.mat+ind2.idon, delta = t2-t1;
+    const cls = delta>0?'delta-pos':delta<0?'delta-neg':'delta-neu';
+    tRows += `<tr><td>${ind.label}</td><td>${ind.mat}</td><td>${ind.idon}</td><td><strong>${t1}</strong></td><td>${ind2.mat}</td><td>${ind2.idon}</td><td><strong>${t2}</strong></td><td class="${cls}">${delta>0?'+':''}${delta}</td></tr>`;
+  });
+
+  document.getElementById('content-compare').innerHTML = `
+    <div class="eyebrow">Confronto 2024/25 vs 2025/26</div>
+    ${renderKPI(kpiItems)}
+    <div class="one-col card">
+      <h3>Esiti maturità a confronto</h3>
+      <div style="position:relative;height:260px;"><canvas id="bar-compare" role="img" aria-label="Confronto esiti maturità"></canvas></div>
+    </div>
+    <div class="one-col card" style="margin-top:12px;">
+      <h3>Studenti per indirizzo — confronto</h3>
+      <table class="cmp-table">
+        <thead><tr><th>Indirizzo</th><th>24/25 mat</th><th>24/25 idon</th><th>24/25 tot</th><th>25/26 mat</th><th>25/26 idon</th><th>25/26 tot</th><th>Δ</th></tr></thead>
+        <tbody>${tRows}</tbody>
+      </table>
+    </div>`;
+
+  setTimeout(() => {
+    if (charts['bar-compare']) charts['bar-compare'].destroy();
+    charts['bar-compare'] = new Chart(document.getElementById('bar-compare'), {
+      type:'bar',
+      data:{ labels:cL, datasets:[
+        { label:'2024/25', data:c1, backgroundColor:'#378ADD', borderRadius:4 },
+        { label:'2025/26', data:c2, backgroundColor:'#1D9E75', borderRadius:4 }
+      ]},
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top', labels:{ font:{size:12}, usePointStyle:true, pointStyle:'rect' } } }, scales:{ y:{ beginAtZero:true } } }
+    });
+  }, 50);
+}
+// ─── ESPORTA index.html CON DATI INCORPORATI ─────────────────────────────────
+function exportHTML() {
+  if (!state['2425'] && !state['2526']) {
+    showToast('Importa almeno un file Excel prima di esportare.', true);
+    return;
+  }
+
+  // Leggi il sorgente della pagina corrente
+  const currentHTML = document.documentElement.outerHTML;
+
+  // Inietta i dati come variabili JS inline, subito dopo <script>
+  const dataScript = `
+<script id="embedded-data">
+(function(){
+  var _d1 = ${JSON.stringify(state['2425'])};
+  var _d2 = ${JSON.stringify(state['2526'])};
+  var _ts = '${document.getElementById('update-time').textContent.replace('Aggiornato: ','')}';
+  window.__EMBEDDED__ = { d1: _d1, d2: _d2, ts: _ts };
+})();
+<\/script>`;
+
+  // Inserisci subito prima del tag </head>
+  const exported = currentHTML.replace('</head>', dataScript + '</head>');
+
+  // Scarica il file
+  const blob = new Blob([exported], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'index.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  // Chiudi il pannello import se aperto
+  document.getElementById('import-panel').classList.remove('open');
+
+  showToast('index.html scaricato — caricalo su GitHub per aggiornare la dashboard pubblica.');
+}
+
+// Carica dati embedded (se presenti nel file esportato)
+if (window.__EMBEDDED__) {
+  if (window.__EMBEDDED__.d1) { state['2425'] = window.__EMBEDDED__.d1; }
+  if (window.__EMBEDDED__.d2) { state['2526'] = window.__EMBEDDED__.d2; }
+}
+
+// Carica dati salvati al primo avvio
+loadFromStorage();
+</script>
+
+
+</body><grammarly-desktop-integration data-grammarly-shadow-root="true" style="visibility: visible !important;"></grammarly-desktop-integration></html>
