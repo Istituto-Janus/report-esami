@@ -223,6 +223,34 @@ const state = { '2425': null, '2526': null };
 const C = { blu:'#378ADD', verde:'#639922', rosso:'#E24B4A', arancio:'#EF9F27', grigio:'#888780' };
 const charts = {};
 
+function saveToStorage(anno, data, timestamp) {
+  try {
+    localStorage.setItem('janus-data-' + anno, JSON.stringify(data));
+    localStorage.setItem('janus-ts-' + anno, timestamp);
+  } catch(e) {}
+}
+
+function loadFromStorage() {
+  try {
+    const d1 = localStorage.getItem('janus-data-2425');
+    const d2 = localStorage.getItem('janus-data-2526');
+    const ts1 = localStorage.getItem('janus-ts-2425');
+    const ts2 = localStorage.getItem('janus-ts-2526');
+    if (d1) { state['2425'] = JSON.parse(d1); renderAnno('2425', state['2425']); markLoaded('2425'); }
+    if (d2) { state['2526'] = JSON.parse(d2); renderAnno('2526', state['2526']); markLoaded('2526'); }
+    if (d1 && d2) renderCompare(state['2425'], state['2526']);
+    const lastTs = ts2 || ts1;
+    if (lastTs) {
+      document.getElementById('update-dot').classList.add('live');
+      document.getElementById('update-time').textContent = 'Aggiornato: ' + lastTs;
+    }
+  } catch(e) {}
+}
+
+function markLoaded(anno) {
+  document.getElementById('badge-' + anno).classList.remove('missing');
+}
+
 // ─── UI HELPERS ───────────────────────────────────────────────────────────────
 function toggleImport() {
   document.getElementById('import-panel').classList.toggle('open');
@@ -308,6 +336,7 @@ function processFile(file, dzId) {
       document.getElementById('update-time').textContent = 'Aggiornato: ' +
         new Date().toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
+      saveToStorage(anno, data, new Date().toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }));
       showToast('File ' + (anno === '2425' ? '2024/25' : '2025/26') + ' importato con successo');
     } catch(err) {
       showToast('Errore lettura file: ' + err.message, true);
@@ -534,6 +563,8 @@ function renderCompare(d1, d2) {
     });
   }, 50);
 }
+// Carica dati salvati al primo avvio
+loadFromStorage();
 </script>
 </body>
 </html>
